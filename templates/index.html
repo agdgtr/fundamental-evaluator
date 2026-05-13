@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pro Macro Stock Scorer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Python Web App</p>
+          <h1>Pro Macro Stock Scorer</h1>
+          <p class="lede">
+            A browser-based version of your sheet that keeps the scoring logic in Python and swaps
+            Google Sheets fetches for SEC EDGAR plus market-data fallbacks.
+          </p>
+        </div>
+        <form method="post" class="query-card">
+          <label>
+            <span>Symbol</span>
+            <input type="text" name="symbol" value="{{ form.symbol }}" placeholder="MSFT" required>
+          </label>
+          <label>
+            <span>Already holding (%)</span>
+            <input type="number" step="0.1" min="0" max="100" name="current_hold" value="{{ form.current_hold }}">
+          </label>
+          <label>
+            <span>Macro score (0-100)</span>
+            <input type="number" step="1" min="0" max="100" name="macro_score" value="{{ form.macro_score }}">
+          </label>
+          <button type="submit">Analyze</button>
+          <p class="hint">Use a neutral `50` macro score if you only want the fundamentals-driven result.</p>
+        </form>
+      </section>
+
+      {% if error %}
+      <section class="alert error">
+        <strong>Request failed.</strong>
+        <span>{{ error }}</span>
+      </section>
+      {% endif %}
+
+      {% if result %}
+      <section class="panel sheet-panel">
+        <div class="panel-head">
+          <h2>Literal Formula Outputs</h2>
+          <span class="pill">Sheet Style</span>
+        </div>
+        <p class="sheet-intro">
+          This section is the direct output view of the calculated formula results, including the final grade
+          and recommendation text block.
+        </p>
+        <div class="sheet-section-stack">
+          {% for section in result.sheet_sections %}
+          <article class="sheet-block">
+            <h3>{{ section['title'] }}</h3>
+            <div class="sheet-table-wrap">
+              <table class="sheet-table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                    <th>Side Metric</th>
+                    <th>Side Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in section['rows'] %}
+                  <tr>
+                    <td>{{ row['label'] }}</td>
+                    <td class="formula-cell">{{ row['value'] }}</td>
+                    <td>{{ row['side_label'] }}</td>
+                    <td class="formula-cell">{{ row['side_value'] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="grid top-grid">
+        <article class="panel profile-panel">
+          <div class="panel-head">
+            <h2>{{ result.profile.name }}</h2>
+            <span class="pill">{{ result.profile.symbol }}</span>
+          </div>
+          <dl class="profile-grid">
+            <div><dt>Sector</dt><dd>{{ result.profile.sector or "N/A" }}</dd></div>
+            <div><dt>Industry</dt><dd>{{ result.profile.industry or "N/A" }}</dd></div>
+            <div><dt>IPO Date</dt><dd>{{ result.profile.ipo_date or "N/A" }}</dd></div>
+            <div><dt>CEO</dt><dd>{{ result.profile.ceo or "N/A" }}</dd></div>
+            <div><dt>Employees</dt><dd>{{ "{:,}".format(result.profile.employees) if result.profile.employees else "N/A" }}</dd></div>
+            <div><dt>Country</dt><dd>{{ result.profile.country or "N/A" }}</dd></div>
+            <div><dt>Exchange</dt><dd>{{ result.profile.exchange or "N/A" }}</dd></div>
+            <div><dt>CIK</dt><dd>{{ result.profile.cik }}</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel recommendation-panel">
+          <div class="panel-head">
+            <h2>{{ result.recommendation.label }}</h2>
+            <span class="score-badge">{{ result.recommendation.final_score }}</span>
+          </div>
+          <p class="allocation">Target allocation: {{ result.recommendation.allocation }}%</p>
+          <div class="recommendation-copy">
+            {% for line in result.recommendation_lines %}
+            <p>{{ line }}</p>
+            {% endfor %}
+          </div>
+          {% if result.recommendation.capped_by_risk %}
+          <p class="risk-note">Allocation was capped by the risk controls in the sheet logic.</p>
+          {% endif %}
+        </article>
+      </section>
+
+      <section class="score-strip">
+        {% for card in result.score_cards %}
+        <article class="score-card">
+          <p>{{ card.label }}</p>
+          <strong>{{ card.value }}</strong>
+        </article>
+        {% endfor %}
+      </section>
+
+      {% if result.warnings %}
+      <section class="panel notes-panel">
+        <h2>Warnings</h2>
+        <ul class="flat-list">
+          {% for warning in result.warnings %}
+          <li>{{ warning }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      <section class="section-grid">
+        {% for section in result.sections %}
+        <article class="panel metric-panel">
+          <div class="panel-head">
+            <h2>{{ section.title }}</h2>
+          </div>
+          <dl class="metric-list">
+            {% for item in section['items'] %}
+            <div>
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.value }}</dd>
+            </div>
+            {% endfor %}
+          </dl>
+        </article>
+        {% endfor %}
+      </section>
+
+      <section class="panel notes-panel">
+        <h2>Data Notes</h2>
+        <ul class="flat-list">
+          {% for note in result.source_notes %}
+          <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </main>
+  </body>
+</html>
