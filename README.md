@@ -26,7 +26,7 @@ The original sheet referenced custom functions such as `EP_SPREAD()` and REIT he
 ## Run it
 
 ```bash
-cd "/Users/30andgarcia/Desktop/sheets extract"
+
 python3 -m pip install -r requirements.txt
 export SEC_USER_AGENT="Your Name your@email.com"
 python3 run.py
@@ -35,7 +35,7 @@ python3 run.py
 Optional only, not required:
 
 ```bash
-export MASSIVE_API_KEY="your_massive_key"
+
 export FMP_API_KEY="your_fmp_key"
 export ALPHAVANTAGE_API_KEY="your_alpha_vantage_key"
 ```
