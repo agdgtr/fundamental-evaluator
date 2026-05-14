@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pro Macro Stock Scorer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">Python Web App</p>
+          <h1>Pro Macro Stock Scorer</h1>
+          <p class="lede">
+            A browser-based version of your sheet that keeps the scoring logic in Python and swaps
+            Google Sheets fetches for SEC EDGAR plus market-data fallbacks.
+          </p>
+        </div>
+        <form method="post" class="query-card">
+          <label>
+            <span>Symbol</span>
+            <input type="text" name="symbol" value="{{ form.symbol }}" placeholder="MSFT" required>
+          </label>
+          <label>
+            <span>Already holding (%)</span>
+            <input type="number" step="0.1" min="0" max="100" name="current_hold" value="{{ form.current_hold }}">
+          </label>
+          <label>
+            <span>Macro score (0-100)</span>
+            <input type="number" step="1" min="0" max="100" name="macro_score" value="{{ form.macro_score }}">
+          </label>
+          <section class="sec-identity-card" id="sec-identity-card">
+            <div class="sec-identity-head">
+              <div>
+                <p class="sec-identity-title">SEC request identity</p>
+                <p class="sec-identity-copy">Enter your own name and email once. It is saved only in this browser and reused on future SEC EDGAR requests.</p>
+              </div>
+              <div class="sec-identity-actions">
+                <button type="button" class="ghost-button" id="sec-edit-button" hidden>Edit</button>
+                <button type="button" class="ghost-button" id="sec-clear-button" hidden>Clear</button>
+              </div>
+            </div>
+            <p class="sec-identity-status" id="sec-identity-status" hidden></p>
+            <div class="sec-identity-fields" id="sec-identity-fields">
+              <label>
+                <span>Your name</span>
+                <input type="text" id="sec-name-input" value="{{ form.sec_name }}" placeholder="Jane Doe" autocomplete="name">
+              </label>
+              <label>
+                <span>Your email</span>
+                <input type="email" id="sec-email-input" value="{{ form.sec_email }}" placeholder="jane@example.com" autocomplete="email">
+              </label>
+              <button type="button" class="secondary-button" id="sec-save-button">Save on this browser</button>
+            </div>
+            <input type="hidden" name="sec_name" id="sec-name-hidden" value="{{ form.sec_name }}">
+            <input type="hidden" name="sec_email" id="sec-email-hidden" value="{{ form.sec_email }}">
+          </section>
+          <button type="submit">Analyze</button>
+          <p class="hint">Use a neutral `50` macro score if you only want the fundamentals-driven result.</p>
+        </form>
+      </section>
+
+      {% if error %}
+      <section class="alert error">
+        <strong>Request failed.</strong>
+        <span>{{ error }}</span>
+      </section>
+      {% endif %}
+
+      {% if result %}
+      <section class="panel sheet-panel">
+        <div class="panel-head">
+          <h2>Literal Formula Outputs</h2>
+          <span class="pill">Sheet Style</span>
+        </div>
+        <p class="sheet-intro">
+          This section is the direct output view of the calculated formula results, including the final grade
+          and recommendation text block.
+        </p>
+        <div class="sheet-section-stack">
+          {% for section in result.sheet_sections %}
+          <article class="sheet-block">
+            <h3>{{ section['title'] }}</h3>
+            <div class="sheet-table-wrap">
+              <table class="sheet-table">
+                <thead>
+                  <tr>
+                    <th>Metric</th>
+                    <th>Value</th>
+                    <th>Side Metric</th>
+                    <th>Side Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in section['rows'] %}
+                  <tr>
+                    <td>{{ row['label'] }}</td>
+                    <td class="formula-cell">{{ row['value'] }}</td>
+                    <td>{{ row['side_label'] }}</td>
+                    <td class="formula-cell">{{ row['side_value'] }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          </article>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="grid top-grid">
+        <article class="panel profile-panel">
+          <div class="panel-head">
+            <h2>{{ result.profile.name }}</h2>
+            <span class="pill">{{ result.profile.symbol }}</span>
+          </div>
+          <dl class="profile-grid">
+            <div><dt>Sector</dt><dd>{{ result.profile.sector or "N/A" }}</dd></div>
+            <div><dt>Industry</dt><dd>{{ result.profile.industry or "N/A" }}</dd></div>
+            <div><dt>IPO Date</dt><dd>{{ result.profile.ipo_date or "N/A" }}</dd></div>
+            <div><dt>CEO</dt><dd>{{ result.profile.ceo or "N/A" }}</dd></div>
+            <div><dt>Employees</dt><dd>{{ "{:,}".format(result.profile.employees) if result.profile.employees else "N/A" }}</dd></div>
+            <div><dt>Country</dt><dd>{{ result.profile.country or "N/A" }}</dd></div>
+            <div><dt>Exchange</dt><dd>{{ result.profile.exchange or "N/A" }}</dd></div>
+            <div><dt>CIK</dt><dd>{{ result.profile.cik }}</dd></div>
+          </dl>
+        </article>
+
+        <article class="panel recommendation-panel">
+          <div class="panel-head">
+            <h2>{{ result.recommendation.label }}</h2>
+            <span class="score-badge">{{ result.recommendation.final_score }}</span>
+          </div>
+          <p class="allocation">Target allocation: {{ result.recommendation.allocation }}%</p>
+          <div class="recommendation-copy">
+            {% for line in result.recommendation_lines %}
+            <p>{{ line }}</p>
+            {% endfor %}
+          </div>
+          {% if result.recommendation.capped_by_risk %}
+          <p class="risk-note">Allocation was capped by the risk controls in the sheet logic.</p>
+          {% endif %}
+        </article>
+      </section>
+
+      <section class="score-strip">
+        {% for card in result.score_cards %}
+        <article class="score-card">
+          <p>{{ card.label }}</p>
+          <strong>{{ card.value }}</strong>
+        </article>
+        {% endfor %}
+      </section>
+
+      {% if result.warnings %}
+      <section class="panel notes-panel">
+        <h2>Warnings</h2>
+        <ul class="flat-list">
+          {% for warning in result.warnings %}
+          <li>{{ warning }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+
+      <section class="section-grid">
+        {% for section in result.sections %}
+        <article class="panel metric-panel">
+          <div class="panel-head">
+            <h2>{{ section.title }}</h2>
+          </div>
+          <dl class="metric-list">
+            {% for item in section['items'] %}
+            <div>
+              <dt>{{ item.label }}</dt>
+              <dd>{{ item.value }}</dd>
+            </div>
+            {% endfor %}
+          </dl>
+        </article>
+        {% endfor %}
+      </section>
+
+      <section class="panel notes-panel">
+        <h2>Data Notes</h2>
+        <ul class="flat-list">
+          {% for note in result.source_notes %}
+          <li>{{ note }}</li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+    </main>
+    <script>
+      const secNameStorageKey = "fundamental-scorer-sec-name";
+      const secEmailStorageKey = "fundamental-scorer-sec-email";
+
+      const queryForm = document.querySelector(".query-card");
+      const secNameInput = document.getElementById("sec-name-input");
+      const secEmailInput = document.getElementById("sec-email-input");
+      const secNameHidden = document.getElementById("sec-name-hidden");
+      const secEmailHidden = document.getElementById("sec-email-hidden");
+      const secFields = document.getElementById("sec-identity-fields");
+      const secStatus = document.getElementById("sec-identity-status");
+      const secSaveButton = document.getElementById("sec-save-button");
+      const secEditButton = document.getElementById("sec-edit-button");
+      const secClearButton = document.getElementById("sec-clear-button");
+
+      function readStoredValue(key) {
+        try {
+          return localStorage.getItem(key);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function writeStoredValue(key, value) {
+        try {
+          localStorage.setItem(key, value);
+          return true;
+        } catch (error) {
+          return false;
+        }
+      }
+
+      function removeStoredValue(key) {
+        try {
+          localStorage.removeItem(key);
+        } catch (error) {
+          return;
+        }
+      }
+
+      function normalizedValue(value) {
+        return (value || "").trim();
+      }
+
+      function setHiddenValues(name, email) {
+        secNameHidden.value = normalizedValue(name);
+        secEmailHidden.value = normalizedValue(email);
+      }
+
+      function showEntryState() {
+        secFields.hidden = false;
+        secStatus.hidden = true;
+        secEditButton.hidden = true;
+        secClearButton.hidden = true;
+      }
+
+      function showSavedState(name, email) {
+        secStatus.textContent = `Saved on this browser for SEC EDGAR requests: ${name} — ${email}`;
+        secStatus.hidden = false;
+        secFields.hidden = true;
+        secEditButton.hidden = false;
+        secClearButton.hidden = false;
+        setHiddenValues(name, email);
+      }
+
+      function persistIdentity() {
+        const name = normalizedValue(secNameInput.value);
+        const email = normalizedValue(secEmailInput.value);
+        if (!name || !email) {
+          showEntryState();
+          if (!name) {
+            secNameInput.focus();
+          } else {
+            secEmailInput.focus();
+          }
+          return false;
+        }
+        writeStoredValue(secNameStorageKey, name);
+        writeStoredValue(secEmailStorageKey, email);
+        showSavedState(name, email);
+        return true;
+      }
+
+      function loadSavedIdentity() {
+        const savedName = normalizedValue(readStoredValue(secNameStorageKey) || secNameHidden.value || secNameInput.value);
+        const savedEmail = normalizedValue(readStoredValue(secEmailStorageKey) || secEmailHidden.value || secEmailInput.value);
+        secNameInput.value = savedName;
+        secEmailInput.value = savedEmail;
+        if (savedName && savedEmail) {
+          if (!readStoredValue(secNameStorageKey)) {
+            writeStoredValue(secNameStorageKey, savedName);
+          }
+          if (!readStoredValue(secEmailStorageKey)) {
+            writeStoredValue(secEmailStorageKey, savedEmail);
+          }
+          showSavedState(savedName, savedEmail);
+          return;
+        }
+        showEntryState();
+      }
+
+      secSaveButton.addEventListener("click", persistIdentity);
+      secEditButton.addEventListener("click", () => {
+        secFields.hidden = false;
+        secStatus.hidden = true;
+        secEditButton.hidden = true;
+        secClearButton.hidden = false;
+        secNameInput.focus();
+      });
+      secClearButton.addEventListener("click", () => {
+        removeStoredValue(secNameStorageKey);
+        removeStoredValue(secEmailStorageKey);
+        secNameInput.value = "";
+        secEmailInput.value = "";
+        setHiddenValues("", "");
+        showEntryState();
+        secNameInput.focus();
+      });
+
+      queryForm.addEventListener("submit", (event) => {
+        const hasSavedHiddenValues = normalizedValue(secNameHidden.value) && normalizedValue(secEmailHidden.value);
+        if (hasSavedHiddenValues && secFields.hidden) {
+          return;
+        }
+        if (!persistIdentity()) {
+          event.preventDefault();
+        }
+      });
+
+      loadSavedIdentity();
+    </script>
+  </body>
+</html>
