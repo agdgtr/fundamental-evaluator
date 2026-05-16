@@ -54,6 +54,12 @@ def duration_days(entry: dict[str, Any]) -> int | None:
     return (end - start).days
 
 
+def entry_anchor_date(entry: dict[str, Any], *, instant: bool = False) -> dt.date | None:
+    if instant:
+        return parse_date(entry.get("instant") or entry.get("end"))
+    return parse_date(entry.get("end") or entry.get("instant"))
+
+
 def dedupe_by_period(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     chosen: dict[tuple[str | None, str | None, str | None], dict[str, Any]] = {}
     for entry in sorted(
@@ -684,7 +690,7 @@ class FactStore:
         today = dt.date.today()
         filtered: list[dict[str, Any]] = []
         for entry in entries:
-            anchor = parse_date(entry.get("instant") if instant else entry.get("end"))
+            anchor = entry_anchor_date(entry, instant=instant)
             if not anchor:
                 continue
             if (today - anchor).days <= max_age_days:
@@ -695,7 +701,7 @@ class FactStore:
     def _sort_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         return sorted(
             entries,
-            key=lambda item: (item.get("end") or item.get("instant") or "", item.get("filed") or ""),
+            key=lambda item: (item.get("end") or item.get("instant") or "", item.get("filed") or "", item.get("frame") or ""),
             reverse=True,
         )
 
