@@ -906,3 +906,53 @@ def first_item(values: list[Any], index: int = 0) -> Any:
     if len(values) > index:
         return values[index]
     return None
+
+
+
+
+# NEXT TEST PART: removable Polygon fallback support
+class UserProvidedMassiveClient(MassiveClient):
+    def __init__(self, api_key: str) -> None:
+        super().__init__()
+        clean_key = (api_key or "").strip()
+        self.api_key = clean_key or None
+        if self.api_key and self.api_key_header:
+            self.session.headers[self.api_key_header] = self.api_key
+
+
+def build_polygon_massive_client(
+    api_key: str | None,
+    default_client: MassiveClient | None = None,
+) -> MassiveClient | None:
+    clean_key = (api_key or "").strip()
+    if clean_key:
+        return UserProvidedMassiveClient(clean_key)
+    if default_client is not None and default_client.available:
+        return default_client
+    return None
+
+
+def empty_polygon_fallback_bundle() -> dict[str, Any]:
+    return {
+        "snapshot": None,
+        "overview": None,
+        "ratios": None,
+        "used": False,
+    }
+
+
+def fetch_polygon_fallback_bundle(
+    client: MassiveClient | None,
+    symbol: str,
+) -> dict[str, Any]:
+    if client is None:
+        return empty_polygon_fallback_bundle()
+    snapshot = client.fetch_single_ticker_snapshot(symbol)
+    overview = client.fetch_ticker_overview(symbol)
+    ratios = client.fetch_ratios(symbol)
+    return {
+        "snapshot": snapshot if isinstance(snapshot, dict) else None,
+        "overview": overview if isinstance(overview, dict) else None,
+        "ratios": ratios if isinstance(ratios, dict) else None,
+        "used": any(isinstance(payload, dict) and payload for payload in [snapshot, overview, ratios]),
+    }
