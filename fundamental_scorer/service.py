@@ -12,7 +12,9 @@ from .data_sources import (
     SecEdgarClient,
     YahooFinanceClient,
     YahooWebClient,
+    build_polygon_massive_client,
     duration_days,
+    fetch_polygon_fallback_bundle,
     first_item,
     first_non_null,
     parse_date,
@@ -274,6 +276,7 @@ class FundamentalScorerService:
         macro_score: float = 50,
         sec_name: str | None = None,
         sec_email: str | None = None,
+        polygon_api_key: str | None = None,
     ) -> dict[str, Any]:
         symbol = symbol.strip().upper()
         sec = self.sec.for_identity(sec_name, sec_email)
@@ -282,9 +285,6 @@ class FundamentalScorerService:
         companyfacts = sec.fetch_companyfacts(cik)
         yahoo = self.yahoo.fetch_snapshot(symbol)
         yahoo_web = self.yahoo_web.fetch_metrics(symbol)
-        massive_snapshot = self.massive.fetch_single_ticker_snapshot(symbol)
-        massive_overview = self.massive.fetch_ticker_overview(symbol)
-        massive_ratios = self.massive.fetch_ratios(symbol)
         fmp_quote = self.fmp.fetch_quote(symbol)
         fmp_key_metrics = self.fmp.fetch_key_metrics_ttm(symbol)
         fmp_ratios = self.fmp.fetch_ratios_ttm(symbol)
@@ -611,8 +611,37 @@ class FundamentalScorerService:
             latest_instant_millions(["InventoryNet"], ["us-gaap:InventoryNet"]),
         )
 
+        sec_shares_outstanding = facts.latest_instant_value(
+            ["CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"],
+            unit_preferences=["shares"],
+            max_age_days=RECENT_QUARTER_MAX_AGE_DAYS,
+        )
+        polygon_bundle = load_polygon_fallback_bundle(
+            symbol=symbol,
+            api_key=polygon_api_key,
+            default_client=self.massive,
+            sec_gap_snapshot=build_polygon_sec_gap_snapshot(
+                total_assets=total_assets,
+                current_assets=current_assets,
+                current_liabilities=current_liabilities,
+                total_liabilities=total_liabilities,
+                equity=equity,
+                retained_earnings=retained_earnings,
+                cash=cash,
+                debt=debt,
+                revenue=first_item(revenue_series),
+                operating_income=first_item(operating_income_series),
+                net_income=first_item(net_income_series),
+                operating_cash_flow=first_item(ocf_series),
+                shares_outstanding=sec_shares_outstanding,
+            ),
+        )
+        massive_snapshot = polygon_bundle["snapshot"]
+        massive_overview = polygon_bundle["overview"]
+        massive_ratios = polygon_bundle["ratios"]
+
         shares_outstanding = first_non_null(
-            facts.latest_instant_value(["CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"], unit_preferences=["shares"], max_age_days=RECENT_QUARTER_MAX_AGE_DAYS),
+            sec_shares_outstanding,
             pick_number(
                 nested_number(massive_overview, ("weighted_shares_outstanding",), ("share_class_shares_outstanding",)),
                 fmp_quote.get("sharesOutstanding") if isinstance(fmp_quote, dict) else None,
@@ -1322,6 +1351,7 @@ class FundamentalScorerService:
             "warnings": warnings,
             "source_notes": [
             "SEC EDGAR company submissions, companyfacts, and inline filing parsing are used first for filing-backed raw fundamentals.",
+            "If you save a Polygon or Massive API key in the browser, the app makes one fallback bundle request only when SEC-backed core inputs are missing, and it uses those results only to fill gaps.",
             "Yahoo Finance direct HTML parsing and yfinance are the default no-key fallbacks for price, profile, and market-derived fields.",
             "Growth metrics prefer current quarter versus prior-year quarter comparisons from SEC filing data, then fall back to annual and TTM filing comparisons.",
             "REIT FFO and AFFO are derived from filing-backed components unless the latest filing exposes cleaner company-reported values.",
@@ -1329,3 +1359,44 @@ class FundamentalScorerService:
             "The original sheet's custom EP_SPREAD() function was approximated as ROIC minus a 10.84% cost of capital because the underlying Sheets function logic was not provided.",
         ],
         }
+
+
+
+
+# NEXT TEST PART: removable Polygon fallback support
+POLYGON_SEC_GAP_KEYS = (
+    "total_assets",
+    "current_assets",
+    "current_liabilities",
+    "total_liabilities",
+    "equity",
+    "retained_earnings",
+    "cash",
+    "debt",
+    "revenue",
+    "operating_income",
+    "net_income",
+    "operating_cash_flow",
+    "shares_outstanding",
+)
+
+
+def build_polygon_sec_gap_snapshot(**values: float | None) -> dict[str, float | None]:
+    return {key: values.get(key) for key in POLYGON_SEC_GAP_KEYS}
+
+
+def should_fetch_polygon_fallback(sec_gap_snapshot: dict[str, float | None]) -> bool:
+    return any(not has_value(sec_gap_snapshot.get(key)) for key in POLYGON_SEC_GAP_KEYS)
+
+
+def load_polygon_fallback_bundle(
+    *,
+    symbol: str,
+    api_key: str | None,
+    default_client: MassiveClient,
+    sec_gap_snapshot: dict[str, float | None],
+) -> dict[str, Any]:
+    if not should_fetch_polygon_fallback(sec_gap_snapshot):
+        return {"snapshot": None, "overview": None, "ratios": None, "used": False}
+    client = build_polygon_massive_client(api_key, default_client=default_client)
+    return fetch_polygon_fallback_bundle(client, symbol)
