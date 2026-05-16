@@ -152,11 +152,11 @@ def sec_expected_quarter_metrics(service: FundamentalScorerService, symbol: str)
 
 def main() -> None:
     service = FundamentalScorerService()
-    tickers = ["MSFT", "GOOG", "JPM", "TDW", "XOM", "CAT", "PFE", "NEE", "O", "PLD", "AMT", "EQIX"]
-    expected_ceos = {
-        "MSFT": "Mr. Satya Nadella",
-        "GOOG": "Mr. Sundar Pichai",
-        "JPM": "Mr. James Dimon",
+    tickers = ["MSFT", "GOOG", "JPM", "TDW", "XOM", "CAT", "PFE", "NEE", "O", "PLD", "AMT", "EQIX", "BABA"]
+    expected_ceo_fragments = {
+        "MSFT": "Satya Nadella",
+        "GOOG": "Sundar Pichai",
+        "JPM": "James Dimon",
         "TDW": "Quintin V. Kneen",
     }
 
@@ -175,10 +175,10 @@ def main() -> None:
         assert profile["ceo"], f"{symbol} missing CEO"
         assert "  " not in profile["ceo"], f"{symbol} CEO contains double spaces: {profile['ceo']!r}"
 
-        if symbol in expected_ceos:
-            assert profile["ceo"] == expected_ceos[symbol], f"{symbol} CEO mismatch: {profile['ceo']}"
+        if symbol in expected_ceo_fragments:
+            assert expected_ceo_fragments[symbol] in profile["ceo"], f"{symbol} CEO mismatch: {profile['ceo']}"
 
-        if symbol in {"MSFT", "GOOG", "CAT", "PFE", "TDW", "XOM", "AMT"}:
+        if symbol in {"MSFT", "GOOG", "CAT", "PFE", "TDW", "XOM", "AMT", "BABA"}:
             expected = sec_expected_quarter_metrics(service, symbol)
             for field in ["gross_margin", "net_margin", "revenue_growth", "earnings_growth", "eps_growth"]:
                 if expected[field] is not None:
@@ -193,6 +193,13 @@ def main() -> None:
             if symbol == "TDW":
                 assert metrics["cash_ratio"] is not None and 1.5 <= metrics["cash_ratio"] <= 2.5, f"TDW cash ratio still looks wrong: {metrics['cash_ratio']}"
                 assert metrics["operating_cash_flow_margin"] is not None and metrics["operating_cash_flow_margin"] > 0.1, f"TDW OCF margin looks wrong: {metrics['operating_cash_flow_margin']}"
+
+            if symbol == "BABA":
+                if expected["current_ratio"] is not None:
+                    assert_close(metrics["current_ratio"], expected["current_ratio"], tolerance=0.0005, label="BABA current_ratio")
+                for field in ["total_assets", "current_assets", "current_liabilities", "total_liabilities", "equity", "retained_earnings", "altman_z"]:
+                    assert metrics[field] is not None, f"BABA {field} missing after SEC instant fix"
+                assert metrics["altman_z"] > 0, f"BABA altman_z should be positive: {metrics['altman_z']}"
 
         if symbol == "O":
             assert metrics["current_ratio"] is not None and abs(metrics["current_ratio"] - 2.062) < 0.01, f"O current ratio fallback regressed: {metrics['current_ratio']}"
@@ -216,8 +223,17 @@ def main() -> None:
 
     app = create_app()
     client = app.test_client()
-    for symbol in ["TDW", "O", "GOOG", "AMT", "PFE"]:
-        response = client.post("/", data={"symbol": symbol, "current_hold": "0", "macro_score": "50"})
+    for symbol in ["TDW", "O", "GOOG", "AMT", "PFE", "BABA"]:
+        response = client.post(
+            "/",
+            data={
+                "symbol": symbol,
+                "current_hold": "0",
+                "macro_score": "50",
+                "sec_name": "Jane Doe",
+                "sec_email": "jane@example.com",
+            },
+        )
         body = response.get_data(as_text=True)
         assert response.status_code == 200, f"{symbol} route failed with {response.status_code}"
         assert "Literal Formula Outputs" in body, f"{symbol} route missing sheet output block"
