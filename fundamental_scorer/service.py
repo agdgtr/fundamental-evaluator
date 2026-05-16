@@ -393,6 +393,23 @@ class FundamentalScorerService:
                     return to_millions(filing_value)
             return None
 
+        def sum_latest_instant_millions(
+            concepts: list[str],
+            filing_concepts: list[str] | None = None,
+        ) -> float | None:
+            values: list[float] = []
+            for concept in concepts:
+                value = facts.latest_instant_value([concept], unit_preferences=["USD"], max_age_days=RECENT_QUARTER_MAX_AGE_DAYS)
+                if value is not None:
+                    values.append(to_millions(value))
+            if values:
+                return sum(values)
+            if filing_concepts:
+                filing_value = sec.recent_filing_value(cik, filing_concepts, kind="instant", unit_preferences=["usd"])
+                if filing_value is not None:
+                    return to_millions(filing_value)
+            return None
+
         revenue_ttm_series = ttm_series_millions(["Revenues", "SalesRevenueNet", "RevenueFromContractWithCustomerExcludingAssessedTax"])
         revenue_annual_series = annual_series_millions(["Revenues", "SalesRevenueNet", "RevenueFromContractWithCustomerExcludingAssessedTax"])
         revenue_series = revenue_ttm_series or revenue_annual_series
@@ -558,7 +575,23 @@ class FundamentalScorerService:
         if total_liabilities is None and has_value(total_assets) and has_value(equity):
             total_liabilities = total_assets - equity
         retained_earnings = first_non_null(
-            latest_instant_millions(["RetainedEarningsAccumulatedDeficit"], ["us-gaap:RetainedEarningsAccumulatedDeficit"]),
+            sum_latest_instant_millions(
+                ["RetainedEarningsAppropriated", "RetainedEarningsUnappropriated"],
+                [
+                    "us-gaap:RetainedEarningsAppropriated",
+                    "us-gaap:RetainedEarningsUnappropriated",
+                ],
+            ),
+            latest_instant_millions(
+                [
+                    "RetainedEarningsAccumulatedDeficit",
+                    "RetainedEarningsUnappropriated",
+                ],
+                [
+                    "us-gaap:RetainedEarningsAccumulatedDeficit",
+                    "us-gaap:RetainedEarningsUnappropriated",
+                ],
+            ),
         )
         cash = first_non_null(
             latest_instant_millions(
@@ -1067,6 +1100,12 @@ class FundamentalScorerService:
             "cfo_net_income": cfo_net_income,
             "capex_cfo": capex_cfo,
             "accrual_ratio": accrual_ratio,
+            "total_assets": total_assets,
+            "current_assets": current_assets,
+            "current_liabilities": current_liabilities,
+            "total_liabilities": total_liabilities,
+            "equity": equity,
+            "retained_earnings": retained_earnings,
             "revenue": revenue,
             "current_price": price,
             "market_cap": market_cap,
