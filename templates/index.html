@@ -56,6 +56,28 @@
             <input type="hidden" name="sec_name" id="sec-name-hidden" value="{{ form.sec_name }}">
             <input type="hidden" name="sec_email" id="sec-email-hidden" value="{{ form.sec_email }}">
           </section>
+          <!-- NEXT TEST PART: removable Polygon fallback support -->
+          <section class="sec-identity-card" id="polygon-key-card">
+            <div class="sec-identity-head">
+              <div>
+                <p class="sec-identity-title">Polygon API key</p>
+                <p class="sec-identity-copy">Optional. Save your own Polygon or Massive API key on this browser. The app still uses SEC first and only uses Polygon to fill missing gaps.</p>
+              </div>
+              <div class="sec-identity-actions">
+                <button type="button" class="ghost-button" id="polygon-edit-button" hidden>Edit</button>
+                <button type="button" class="ghost-button" id="polygon-clear-button" hidden>Clear</button>
+              </div>
+            </div>
+            <p class="sec-identity-status" id="polygon-status" hidden></p>
+            <div class="sec-identity-fields" id="polygon-fields">
+              <label>
+                <span>Your Polygon key</span>
+                <input type="password" id="polygon-key-input" value="{{ form.polygon_api_key }}" placeholder="Enter Polygon or Massive API key" autocomplete="off" spellcheck="false">
+              </label>
+              <button type="button" class="secondary-button" id="polygon-save-button">Save on this browser</button>
+            </div>
+            <input type="hidden" name="polygon_api_key" id="polygon-key-hidden" value="{{ form.polygon_api_key }}">
+          </section>
           <button type="submit">Analyze</button>
           <p class="hint">Use a neutral `50` macro score if you only want the fundamentals-driven result.</p>
         </form>
@@ -206,6 +228,14 @@
       const secSaveButton = document.getElementById("sec-save-button");
       const secEditButton = document.getElementById("sec-edit-button");
       const secClearButton = document.getElementById("sec-clear-button");
+      const polygonStorageKey = "fundamental-scorer-polygon-api-key";
+      const polygonInput = document.getElementById("polygon-key-input");
+      const polygonHidden = document.getElementById("polygon-key-hidden");
+      const polygonFields = document.getElementById("polygon-fields");
+      const polygonStatus = document.getElementById("polygon-status");
+      const polygonSaveButton = document.getElementById("polygon-save-button");
+      const polygonEditButton = document.getElementById("polygon-edit-button");
+      const polygonClearButton = document.getElementById("polygon-clear-button");
 
       function readStoredValue(key) {
         try {
@@ -236,9 +266,24 @@
         return (value || "").trim();
       }
 
+      function maskedKey(value) {
+        const clean = normalizedValue(value);
+        if (!clean) {
+          return "";
+        }
+        if (clean.length <= 8) {
+          return "•".repeat(clean.length);
+        }
+        return `${"•".repeat(Math.max(clean.length - 4, 4))}${clean.slice(-4)}`;
+      }
+
       function setHiddenValues(name, email) {
         secNameHidden.value = normalizedValue(name);
         secEmailHidden.value = normalizedValue(email);
+      }
+
+      function setPolygonHiddenValue(value) {
+        polygonHidden.value = normalizedValue(value);
       }
 
       function showEntryState() {
@@ -293,6 +338,49 @@
         showEntryState();
       }
 
+      // NEXT TEST PART: removable Polygon fallback support
+      function showPolygonEntryState() {
+        polygonFields.hidden = false;
+        polygonStatus.hidden = true;
+        polygonEditButton.hidden = true;
+        polygonClearButton.hidden = true;
+      }
+
+      function showPolygonSavedState(value) {
+        polygonStatus.textContent = `Saved on this browser for Polygon fallback requests: ${maskedKey(value)}`;
+        polygonStatus.hidden = false;
+        polygonFields.hidden = true;
+        polygonEditButton.hidden = false;
+        polygonClearButton.hidden = false;
+        setPolygonHiddenValue(value);
+      }
+
+      function persistPolygonKey() {
+        const value = normalizedValue(polygonInput.value);
+        if (!value) {
+          removeStoredValue(polygonStorageKey);
+          setPolygonHiddenValue("");
+          showPolygonEntryState();
+          return true;
+        }
+        writeStoredValue(polygonStorageKey, value);
+        showPolygonSavedState(value);
+        return true;
+      }
+
+      function loadPolygonKey() {
+        const savedKey = normalizedValue(readStoredValue(polygonStorageKey) || polygonHidden.value || polygonInput.value);
+        polygonInput.value = savedKey;
+        if (savedKey) {
+          if (!readStoredValue(polygonStorageKey)) {
+            writeStoredValue(polygonStorageKey, savedKey);
+          }
+          showPolygonSavedState(savedKey);
+          return;
+        }
+        showPolygonEntryState();
+      }
+
       secSaveButton.addEventListener("click", persistIdentity);
       secEditButton.addEventListener("click", () => {
         secFields.hidden = false;
@@ -311,17 +399,37 @@
         secNameInput.focus();
       });
 
+      polygonSaveButton.addEventListener("click", persistPolygonKey);
+      polygonEditButton.addEventListener("click", () => {
+        polygonFields.hidden = false;
+        polygonStatus.hidden = true;
+        polygonEditButton.hidden = true;
+        polygonClearButton.hidden = false;
+        polygonInput.focus();
+      });
+      polygonClearButton.addEventListener("click", () => {
+        removeStoredValue(polygonStorageKey);
+        polygonInput.value = "";
+        setPolygonHiddenValue("");
+        showPolygonEntryState();
+        polygonInput.focus();
+      });
+
       queryForm.addEventListener("submit", (event) => {
         const hasSavedHiddenValues = normalizedValue(secNameHidden.value) && normalizedValue(secEmailHidden.value);
         if (hasSavedHiddenValues && secFields.hidden) {
+          persistPolygonKey();
           return;
         }
         if (!persistIdentity()) {
           event.preventDefault();
+          return;
         }
+        persistPolygonKey();
       });
 
       loadSavedIdentity();
+      loadPolygonKey();
     </script>
   </body>
 </html>
