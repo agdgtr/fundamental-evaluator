@@ -26,7 +26,7 @@ The original sheet referenced custom functions such as `EP_SPREAD()` and REIT he
 ## Run it
 
 ```bash
-cd "/Users/30andgarcia/Desktop/sheets extract"
+
 python3 -m pip install -r requirements.txt
 export SEC_USER_AGENT="Your Name your@email.com"
 python3 run.py
